@@ -80,6 +80,15 @@ class ApiService {
     return headers;
   }
 
+  Future<bool> _handleAuthError(int statusCode) async {
+    if (statusCode == 401) {
+      await clearToken();
+      await clearStoredUser();
+      return true;
+    }
+    return false;
+  }
+
   // ============== AUTH ENDPOINTS ==============
 
   Future<AuthResponse> register({
@@ -132,12 +141,6 @@ class ApiService {
         }),
       );
 
-      print('=== LOGIN RESPONSE ===');
-      print('Status Code: ${response.statusCode}');
-      print('Body: ${response.body}');
-      print('====================');
-
-      // Handle non-200 status codes
       if (response.statusCode != 200 && response.statusCode != 201) {
         final errorBody = jsonDecode(response.body);
         return AuthResponse(
@@ -157,9 +160,6 @@ class ApiService {
 
       return authResponse;
     } catch (e) {
-      print('=== LOGIN ERROR ===');
-      print('Exception: $e');
-      print('===================');
       return AuthResponse(
         status: false,
         message: 'Error: ${e.toString()}',
@@ -227,19 +227,11 @@ class ApiService {
         'pesan': pesan,
       };
 
-      print('=== CREATE INQUIRY REQUEST ===');
-      print('Body: ${jsonEncode(body)}');
-
       final response = await http.post(
         Uri.parse('$baseUrl/inquiries'),
         headers: await _getHeaders(includeAuth: true),
         body: jsonEncode(body),
       );
-
-      print('=== CREATE INQUIRY RESPONSE ===');
-      print('Status Code: ${response.statusCode}');
-      print('Body: ${response.body}');
-      print('==============================');
 
       final json = jsonDecode(response.body);
 
@@ -254,7 +246,7 @@ class ApiService {
 
       // Handle validation errors (status 422)
       if (response.statusCode == 422) {
-        final errors = json['errors'] as Map<String, dynamic>?;
+            final errors = json['data'] as Map<String, dynamic>?;
         String errorMessage = json['message'] ?? 'Validasi gagal';
         
         if (errors != null && errors.isNotEmpty) {
@@ -263,8 +255,7 @@ class ApiService {
             errorMessage = firstError.first.toString();
           }
         }
-        
-        print('Validation Error: $errorMessage');
+
         return ApiResponse(
           status: false,
           message: errorMessage,
@@ -278,9 +269,6 @@ class ApiService {
         data: null,
       );
     } catch (e) {
-      print('=== CREATE INQUIRY ERROR ===');
-      print('Exception: $e');
-      print('===========================');
       return ApiResponse(
         status: false,
         message: 'Error: ${e.toString()}',
@@ -303,6 +291,7 @@ class ApiService {
           return data.map((i) => Inquiry.fromJson(i)).toList();
         }
       }
+      await _handleAuthError(response.statusCode);
       return [];
     } catch (e) {
       return [];
@@ -322,6 +311,7 @@ class ApiService {
           return Inquiry.fromJson(json['data']);
         }
       }
+      await _handleAuthError(response.statusCode);
       return null;
     } catch (e) {
       return null;
@@ -344,6 +334,7 @@ class ApiService {
           return Reply.fromJson(json['data']);
         }
       }
+      await _handleAuthError(response.statusCode);
       return null;
     } catch (e) {
       return null;
@@ -366,6 +357,7 @@ class ApiService {
           return data.map((i) => Inquiry.fromJson(i)).toList();
         }
       }
+      await _handleAuthError(response.statusCode);
       return [];
     } catch (e) {
       return [];
@@ -385,6 +377,7 @@ class ApiService {
           return Inquiry.fromJson(json['data']);
         }
       }
+      await _handleAuthError(response.statusCode);
       return null;
     } catch (e) {
       return null;
@@ -401,6 +394,7 @@ class ApiService {
         }),
       );
 
+      await _handleAuthError(response.statusCode);
       return response.statusCode == 200;
     } catch (e) {
       return false;
@@ -425,6 +419,7 @@ class ApiService {
 
   // Validate phone number
   static bool isValidPhoneNumber(String phone) {
-    return RegExp(r'^\d+$').hasMatch(phone);
+    return RegExp(r'^[\d\s\-\(\)\+]+$').hasMatch(phone) &&
+        phone.replaceAll(RegExp(r'[^\d]'), '').length >= 8;
   }
 }

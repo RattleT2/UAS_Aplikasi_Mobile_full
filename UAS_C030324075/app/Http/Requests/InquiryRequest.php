@@ -16,7 +16,7 @@ class InquiryRequest extends FormRequest
         return [
             'category_id' => ['required', 'exists:categories,id'],
             'nama' => ['nullable', 'string'],
-            'email' => ['nullable', 'email:rfc,dns'],
+            'email' => ['nullable', 'email:rfc'],
             'website' => ['required', 'url'],
             'telp' => ['required', 'numeric'],
             'pesan' => ['required', 'string'],

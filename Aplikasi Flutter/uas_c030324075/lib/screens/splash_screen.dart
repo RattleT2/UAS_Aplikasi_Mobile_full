@@ -28,7 +28,13 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     if (token != null) {
-      Navigator.of(context).pushReplacementNamed('/home');
+      final user = await _apiService.getStoredUser();
+      if (!mounted) return;
+      if (user != null && user.role == 'admin') {
+        Navigator.of(context).pushReplacementNamed('/admin-dashboard');
+      } else {
+        Navigator.of(context).pushReplacementNamed('/home');
+      }
     } else {
       Navigator.of(context).pushReplacementNamed('/login');
     }

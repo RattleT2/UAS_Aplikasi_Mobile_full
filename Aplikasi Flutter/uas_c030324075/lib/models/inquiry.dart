@@ -70,6 +70,7 @@ class Reply {
   final int inquiryId;
   final int userId;
   final String message;
+  final String createdAt;
   final User user;
 
   Reply({
@@ -77,6 +78,7 @@ class Reply {
     required this.inquiryId,
     required this.userId,
     required this.message,
+    required this.createdAt,
     required this.user,
   });
 
@@ -86,6 +88,7 @@ class Reply {
       inquiryId: json['inquiry_id'],
       userId: json['user_id'],
       message: json['message'],
+      createdAt: json['created_at'] ?? '',
       user: User.fromJson(json['user']),
     );
   }
@@ -96,6 +99,7 @@ class Reply {
       'inquiry_id': inquiryId,
       'user_id': userId,
       'message': message,
+      'created_at': createdAt,
       'user': user.toJson(),
     };
   }

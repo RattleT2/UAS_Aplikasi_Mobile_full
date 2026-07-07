@@ -13,7 +13,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _apiService = ApiService();
   User? _user;
-  int _selectedIndex = 0;
 
   @override
   void initState() {
@@ -23,9 +22,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUser() async {
     final user = await _apiService.getStoredUser();
-    setState(() {
-      _user = user;
-    });
+    if (mounted) {
+      setState(() {
+        _user = user;
+      });
+      if (user != null && user.role == 'admin') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Navigator.of(context).pushReplacementNamed('/admin-dashboard');
+        });
+      }
+    }
   }
 
   Future<void> _logout() async {
@@ -79,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          // Profile Card
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -122,25 +127,25 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-
-          // Menu Items
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // My Inquiries
                 Card(
                   elevation: 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: InkWell(
-                    onTap: () {
-                      Navigator.of(context).push(
+                    onTap: () async {
+                      final result = await Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => const InquiryListScreen(),
                         ),
                       );
+                      if (result == true && mounted) {
+                        setState(() {});
+                      }
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
@@ -194,8 +199,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // Create Inquiry
                 Card(
                   elevation: 2,
                   shape: RoundedRectangleBorder(
@@ -262,8 +265,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-
-                // Information
                 Card(
                   elevation: 0,
                   color: Colors.blue.shade50,
@@ -277,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'ℹ️ Informasi',
+                          'Info',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,

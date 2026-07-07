@@ -23,6 +23,8 @@ class _InquiryFormScreenState extends State<InquiryFormScreen> {
   Category? _selectedCategory;
   bool _isLoading = false;
   bool _isLoadingCategories = true;
+  bool _isLoadingUserData = true;
+  String _userEmail = '';
 
   @override
   void initState() {
@@ -56,6 +58,12 @@ class _InquiryFormScreenState extends State<InquiryFormScreen> {
       setState(() {
         _namaController.text = user.name;
         _emailController.text = user.email;
+        _userEmail = user.email;
+      });
+    }
+    if (mounted) {
+      setState(() {
+        _isLoadingUserData = false;
       });
     }
   }
@@ -93,12 +101,16 @@ class _InquiryFormScreenState extends State<InquiryFormScreen> {
         websiteValue = 'https://$websiteValue';
       }
 
+      // Normalize telp: strip non-digit chars to match server numeric rule
+      String telpValue = _telpController.text.trim();
+      final telpDigitsOnly = telpValue.replaceAll(RegExp(r'[^\d]'), '');
+
       final response = await _apiService.createInquiry(
         categoryId: _selectedCategory!.id,
         nama: _namaController.text.trim(),
-        email: _emailController.text.trim(),
+        email: _userEmail,
         website: websiteValue,
-        telp: _telpController.text.trim(),
+        telp: telpDigitsOnly,
         pesan: _pesanController.text.trim(),
       );
 
@@ -131,16 +143,6 @@ class _InquiryFormScreenState extends State<InquiryFormScreen> {
   String? _validateNama(String? value) {
     if (value?.isEmpty ?? true) {
       return 'Nama tidak boleh kosong';
-    }
-    return null;
-  }
-
-  String? _validateEmail(String? value) {
-    if (value?.isEmpty ?? true) {
-      return 'Format email Invalid';
-    }
-    if (!ApiService.isValidEmail(value!)) {
-      return 'Format email Invalid';
     }
     return null;
   }
@@ -213,7 +215,7 @@ class _InquiryFormScreenState extends State<InquiryFormScreen> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: _isLoadingCategories
+            child: (_isLoadingCategories || _isLoadingUserData)
                 ? const Center(child: CircularProgressIndicator())
                 : Form(
                     key: _formKey,
@@ -294,7 +296,6 @@ class _InquiryFormScreenState extends State<InquiryFormScreen> {
                             fillColor: Colors.white,
                           ),
                           keyboardType: TextInputType.emailAddress,
-                          validator: _validateEmail,
                         ),
                         const SizedBox(height: 16),
 

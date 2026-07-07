@@ -32,7 +32,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password tidak benar!')),
+        const SnackBar(content: Text('Password tidak cocok!')),
       );
       return;
     }

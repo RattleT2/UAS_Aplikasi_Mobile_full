@@ -17,7 +17,13 @@ class _InquiryListScreenState extends State<InquiryListScreen> {
   @override
   void initState() {
     super.initState();
-    _inquiriesFuture = _apiService.getMyInquiries();
+    _refreshInquiries();
+  }
+
+  void _refreshInquiries() {
+    setState(() {
+      _inquiriesFuture = _apiService.getMyInquiries();
+    });
   }
 
   String _getStatusLabel(String status) {
@@ -62,7 +68,11 @@ class _InquiryListScreenState extends State<InquiryListScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () async {
+            final hasData = _inquiriesFuture !=
+                Future.value(const <Inquiry>[]);
+            Navigator.pop(context, hasData);
+          },
         ),
       ),
       body: FutureBuilder<List<Inquiry>>(
@@ -112,132 +122,140 @@ class _InquiryListScreenState extends State<InquiryListScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: inquiries.length,
-            itemBuilder: (context, index) {
-              final inquiry = inquiries[index];
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: InkWell(
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            InquiryDetailScreen(inquiryId: inquiry.id),
-                      ),
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Tiket #${inquiry.id}',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: _getStatusColor(inquiry.status)
-                                    .withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                _getStatusLabel(inquiry.status),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: _getStatusColor(inquiry.status),
-                                ),
-                              ),
-                            ),
-                          ],
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() {
+                _inquiriesFuture = _apiService.getMyInquiries();
+              });
+            },
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: inquiries.length,
+              itemBuilder: (context, index) {
+                final inquiry = inquiries[index];
+                return Card(
+                  elevation: 2,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: InkWell(
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              InquiryDetailScreen(inquiryId: inquiry.id),
                         ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.folder_open,
-                              size: 16,
-                              color: Colors.blue.shade600,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                inquiry.category.name,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.blue.shade600,
-                                  fontWeight: FontWeight.w500,
+                      );
+                      _refreshInquiries();
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Tiket #${inquiry.id}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.description,
-                              size: 16,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                inquiry.pesan,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade700,
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _getStatusColor(inquiry.status)
+                                      .withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  _getStatusLabel(inquiry.status),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: _getStatusColor(inquiry.status),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              inquiry.email,
-                              style: TextStyle(
-                                fontSize: 12,
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.folder_open,
+                                size: 16,
+                                color: Colors.blue.shade600,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  inquiry.category.name,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.blue.shade600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.description,
+                                size: 16,
                                 color: Colors.grey.shade600,
                               ),
-                            ),
-                            Icon(
-                              Icons.arrow_forward_ios,
-                              size: 14,
-                              color: Colors.grey.shade400,
-                            ),
-                          ],
-                        ),
-                      ],
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  inquiry.pesan,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                inquiry.email,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 14,
+                                color: Colors.grey.shade400,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           );
         },
       ),

@@ -5,6 +5,7 @@ import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/inquiry_form_screen.dart';
+import 'screens/admin_dashboard_screen.dart';
 
 void main() {
   Intl.defaultLocale = 'id_ID';
@@ -56,6 +57,7 @@ class MyApp extends StatelessWidget {
         '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),
         '/inquiry-form': (context) => const InquiryFormScreen(),
+        '/admin-dashboard': (context) => const AdminDashboardScreen(),
       },
     );
   }
