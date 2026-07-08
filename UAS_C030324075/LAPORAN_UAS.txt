@@ -1,0 +1,562 @@
+======================================================================
+           LAPORAN UJIAN AKHIR SEMESTER
+     SISTEM WEBSPACE SUPPORT — HELP DESK TICKETING
+======================================================================
+
+NAMA        : [Mario Pratama Putra Wahyudi]
+NIM         : C030324075
+MATA KULIAH : [P]
+PRODI       : [Program Studi]
+SEMESTER    : [Semester]
+
+======================================================================
+                          BAB 1
+                       PENDAHULUAN
+======================================================================
+
+1.1  LATAR BELAKANG
+
+WebSpace Support adalah aplikasi help desk ticketing system yang
+memungkinkan pengguna untuk mengajukan tiket dukungan teknis terkait
+layanan web hosting, domain, dan konsultasi website. Aplikasi ini
+dibangun dengan arsitektur client-server di mana backend Laravel
+menyediakan REST API yang dikonsumsi oleh frontend web (Blade) dan
+aplikasi mobile (Flutter).
+
+Terdapat dua peran pengguna dalam sistem ini:
+  - User  : Membuat tiket support, melihat tiket sendiri, membalas.
+  - Admin : Melihat semua tiket, mengubah status tiket (Open / Proses
+            / Closed), membalas tiket dari user manapun.
+
+1.2  TUJUAN SISTEM
+
+  1. Menyediakan platform terpusat untuk pelaporan dan penanganan
+     masalah teknis website.
+  2. Memungkinkan komunikasi dua arah (user-admin) melalui fitur
+     balasan (reply) dalam setiap tiket.
+  3. Memberikan dashboard statistik kepada admin untuk memonitor
+     jumlah tiket berdasarkan status.
+  4. Tersedia dalam dua platform: web (Blade) dan mobile (Flutter).
+
+1.3  FITUR UTAMA
+
+  a. Autentikasi — Register, Login, Logout menggunakan JWT Token.
+  b. Manajemen Tiket (User) — Membuat tiket baru dengan memilih
+     kategori, mengisi website, pesan, nama, email, dan telepon.
+  c. Daftar Tiket (User) — Melihat daftar tiket milik sendiri
+     dengan status (Open / Proses / Closed).
+  d. Detail & Balasan — Melihat detail tiket, mengirim dan membaca
+     balasan dalam format percakapan.
+  e. Admin Dashboard — Melihat SEMUA tiket dari semua user, filter
+     berdasarkan status, statistik jumlah tiket.
+  f. Manajemen Status (Admin) — Mengubah status tiket (Open ->
+     Proses -> Closed).
+  g. Role-Based Routing — Admin otomatis diarahkan ke dashboard
+     admin, user ke dashboard user.
+
+
+======================================================================
+                          BAB 2
+                    ARSITEKTUR SISTEM
+======================================================================
+
+2.1  TECHNOLOGY STACK
+
+  +------------------+---------------------------+
+  | Layer            | Teknologi                 |
+  +------------------+---------------------------+
+  | Backend API      | Laravel 11, PHP 8        |
+  | Database         | MySQL / SQLite           |
+  | Authentication   | JWT (tymon/jwt-auth)     |
+  | Frontend Web     | Laravel Blade + Tailwind  |
+  | Mobile App       | Flutter 3, Dart           |
+  | HTTP Client (M)  | package http ^1.1.0       |
+  | Local Storage (M)| package shared_preferences|
+  +------------------+---------------------------+
+
+2.2  DATABASE SCHEMA
+
+  +------------------+--------------------------------------------+
+  | Tabel            | Kolom                                      |
+  +------------------+--------------------------------------------+
+  | users            | id, name, email (unique), password,        |
+  |                  | role [enum: user/admin], email_verified_at,|
+  |                  | timestamps                                 |
+  +------------------+--------------------------------------------+
+  | categories       | id, name, slug (unique), timestamps        |
+  +------------------+--------------------------------------------+
+  | inquiries        | id, user_id (FK), category_id (FK), nama,  |
+  |                  | email, website, telp, pesan (text),        |
+  |                  | status [enum: open/in_progress/closed],    |
+  |                  | timestamps                                 |
+  +------------------+--------------------------------------------+
+  | inquiry_replies  | id, inquiry_id (FK), user_id (FK),         |
+  |                  | message (text), timestamps                 |
+  +------------------+--------------------------------------------+
+
+  Relasi:
+    User 1 ────< N Inquiry         (FK: inquiries.user_id)
+    User 1 ────< N InquiryReply    (FK: inquiry_replies.user_id)
+    Category 1 <─── N Inquiry      (FK: inquiries.category_id)
+    Inquiry 1 <─── N InquiryReply  (FK: inquiry_replies.inquiry_id)
+
+2.3  AUTHENTICATION FLOW
+
+  [Client] ---- POST /api/login {email, password} ---> [Server]
+  [Client] <--- {status, data: {token, user}} ------- [Server]
+  [Client] ---- GET /api/inquiries -------------------> [Server]
+               Header: Authorization: Bearer <token>
+  [Server] ---- Validasi JWT -> auth('api')->user() --+
+  [Client] <--- {status, data: [...]} --------------- [Server]
+
+  Token disimpan di:
+    - Web    : localStorage (key: ws_token, ws_user)
+    - Mobile : SharedPreferences (key: token, user)
+
+  Token expired setelah 60 menit (konfigurasi JWT_TTL di .env).
+
+
+======================================================================
+                          BAB 3
+                 BACKEND — LARAVEL REST API
+======================================================================
+
+3.1  DAFTAR ENDPOINT (11 endpoint)
+
+  +------+--------+----------------------------------+--------------+
+  | No   | Method | URI                              | Auth         |
+  +------+--------+----------------------------------+--------------+
+  | 1    | POST   | /api/register                    | Public       |
+  | 2    | POST   | /api/login                       | Public       |
+  | 3    | GET    | /api/categories                  | Public       |
+  | 4    | POST   | /api/logout                      | JWT (any)    |
+  | 5    | POST   | /api/inquiries                   | JWT (any)    |
+  | 6    | GET    | /api/inquiries                   | JWT (any)    |
+  | 7    | GET    | /api/inquiries/{id}              | JWT (any)    |
+  | 8    | POST   | /api/inquiries/{id}/replies      | JWT (any)    |
+  | 9    | GET    | /api/admin/inquiries             | JWT + admin  |
+  | 10   | GET    | /api/admin/inquiries/{id}        | JWT + admin  |
+  | 11   | PUT    | /api/admin/inquiries/{id}/status | JWT + admin  |
+  +------+--------+----------------------------------+--------------+
+
+3.2  MIDDLEWARE
+
+  a. auth:api     — Memvalidasi JWT token. Semua endpoint kecuali
+                    register, login, dan categories.
+  b. check.role:admin — Middleware kustom (app/Http/Middleware/
+     CheckRole.php). Memeriksa $request->user()->role === 'admin'.
+     Diterapkan pada 3 endpoint admin (no. 9, 10, 11).
+
+3.3  VALIDASI & RESPONSE FORMAT
+
+  Response sukses:
+    {
+      "status": true,
+      "message": "Pesan sukses",
+      "data": { ... }
+    }
+
+  Response error validasi (422):
+    {
+      "status": false,
+      "message": "Validasi gagal",
+      "data": { "field": ["error message"] }
+    }
+
+  Validation Rules (InquiryRequest.php):
+    category_id : required, exists:categories,id
+    nama        : nullable, string
+    email       : nullable, email:rfc        (* sudah diperbaiki)
+    website     : required, url
+    telp        : required, numeric
+    pesan       : required, string
+
+  (*) Awalnya aturan email adalah 'email:rfc,dns' yang menyebabkan
+  DNS lookup gagal untuk domain webspace.com. Telah diubah menjadi
+  'email:rfc' saja agar validasi lebih toleran.
+
+  Global Exception Handling (bootstrap/app.php):
+    - Semua response dari route api/* dirender sebagai JSON.
+    - ValidationException di-intercept dan diformat ulang ke format
+      standar {status, message, data}.
+
+3.4  SEED DATA
+
+  DatabaseSeeder.php menghasilkan data awal:
+    Users:
+      Admin : admin@webspace.test / password (role: admin)
+      User  : user@webspace.test  / password (role: user)
+
+    Categories (5):
+      1. Beli Domain
+      2. Sewa Hosting
+      3. Bantuan Teknis
+      4. Konsultasi Website
+      5. Lainnya
+
+    Inquiries (3 tiket untuk user demo):
+      #1: Bantuan Teknis, website https://websaya.id, status open
+      #2: Sewa Hosting, website https://tokoonline.id, in_progress
+      #3: Beli Domain, website https://brandbaru.id, status closed
+
+    InquiryReplies (6 balasan membentuk 3 percakapan).
+
+
+======================================================================
+                          BAB 4
+              FRONTEND WEB — LARAVEL BLADE + TAILWIND
+======================================================================
+
+4.1  STRUKTUR HALAMAN (6 halaman)
+
+  +-----+---------------------------+-------------------------------+
+  | No  | Route URL                 | Halaman Blade                 |
+  +-----+---------------------------+-------------------------------+
+  | 1   | /login                    | auth/login.blade.php          |
+  | 2   | /register                 | auth/register.blade.php       |
+  | 3   | /dashboard                | user/index.blade.php          |
+  | 4   | /dashboard/tickets/{id}   | user/show.blade.php           |
+  | 5   | /admin                    | admin/index.blade.php         |
+  | 6   | /admin/tickets/{id}       | admin/show.blade.php          |
+  +-----+---------------------------+-------------------------------+
+
+4.2  LAYOUT SYSTEM
+
+  layouts/app.blade.php       — Base HTML (Tailwind CDN, font, animasi,
+                               storage helpers JS)
+  layouts/dashboard.blade.php — Dashboard wrapper (sidebar navigasi,
+                               header user, API helper functions)
+
+4.3  FITUR PER ROLE
+
+  User Dashboard (/dashboard):
+    - Statistik: Total, Open, Proses, Closed (4 kartu)
+    - Daftar tiket (kartu per tiket: kategori, status, website)
+    - Modal "Buat Tiket Baru" (dropdown kategori dari API,
+      form website, telepon, pesan)
+    - Klik tiket -> halaman detail
+
+  User Detail Tiket (/dashboard/tickets/{id}):
+    - Info tiket lengkap (kategori, status, website, pesan,
+      nama, email, telepon)
+    - Thread percakapan gaya chat bubble (kanan: user, kiri: admin)
+    - Form balasan di bagian bawah
+
+  Admin Dashboard (/admin):
+    - Statistik: Total, Open, Proses, Closed (4 kartu)
+    - Daftar SEMUA tiket dengan info owner (nama & email user)
+    - Filter status (Semua / Open / Proses / Closed)
+
+  Admin Detail Tiket (/admin/tickets/{id}):
+    - Info tiket + profil user pembuat tiket
+    - Dropdown ubah status (Open / In Progress / Closed)
+    - Thread percakapan lengkap
+    - Form balasan
+
+  Sidebar Navigasi:
+    - Admin  -> menu "Semua Tiket"
+    - User   -> menu "Tiket Saya" + "Buat Tiket"
+
+4.4  KEAMANAN FRONTEND WEB
+
+  a. Role-based redirect — initDashboard() memeriksa user.role
+     dan otomatis redirect jika user salah halaman (admin tidak
+     bisa akses /dashboard, user tidak bisa akses /admin).
+  b. JWT token disimpan di localStorage (key: ws_token).
+  c. Setiap API call menyertakan header Authorization: Bearer <token>.
+  d. Token expired -> clearAuth() + redirect ke /login.
+
+4.5  BUG FIXING PADA FRONTEND WEB
+
+  Bug #1: Login gagal — setToken()/setUser() tidak terdefinisi.
+    Penyebab: Fungsi penyimpan token hanya ada di dashboard.blade.php,
+    tidak di app.blade.php (base layout untuk halaman login).
+    Perbaikan: Fungsi getToken, setToken, getUser, setUser, clearAuth
+    dipindahkan ke app.blade.php SEBELUM @yield('content').
+
+  Bug #2: Admin dashboard loading spinner terus.
+    Penyebab: Script storage helpers di app.blade.php berada SETELAH
+    @yield('content'), sehingga getToken() undefined saat admin
+    dashboard script jalan duluan.
+    Perbaikan: Script storage helpers dipindahkan ke SEBELUM
+    @yield('content').
+
+  Bug #3: "Tiket tidak ditemukan atau akses ditolak" saat admin
+          membalas.
+    Penyebab: Setelah reply sukses, loadTicket() (GET ulang) bisa
+    gagal karena berbagai alasan dan menimpa seluruh konten halaman
+    dengan pesan error generik.
+    Perbaikan: Setelah reply sukses, reply baru langsung di-append
+    ke DOM tanpa GET ulang. Fungsi appendReply() disisipkan di
+    admin/show.blade.php dan user/show.blade.php.
+
+  Bug #4: Admin nyasar ke halaman user.
+    Penyebab: Tidak ada validasi role di halaman dashboard; web
+    routes tidak punya middleware.
+    Perbaikan: initDashboard() ditambah role redirect — admin yang
+    buka /dashboard otomatis dilempar ke /admin, dan sebaliknya.
+
+  Bug #5: Validasi email gagal untuk domain fiktif.
+    Penyebab: Aturan validasi email:rfc,dns melakukan DNS MX lookup,
+    gagal untuk domain tanpa MX record seperti webspace.com.
+    Perbaikan: Diubah menjadi email:rfc di InquiryRequest.php.
+
+
+======================================================================
+                          BAB 5
+               MOBILE APP — FLUTTER (DART)
+======================================================================
+
+5.1  STRUKTUR SCREEN (9 screen)
+
+  +-----+-----------------------------+-------------------------------+
+  | No  | Screen                      | File                          |
+  +-----+-----------------------------+-------------------------------+
+  | 1   | SplashScreen                | splash_screen.dart            |
+  | 2   | LoginScreen                 | login_screen.dart             |
+  | 3   | RegisterScreen              | register_screen.dart          |
+  | 4   | HomeScreen                  | home_screen.dart              |
+  | 5   | InquiryFormScreen           | inquiry_form_screen.dart      |
+  | 6   | InquiryListScreen           | inquiry_list_screen.dart      |
+  | 7   | InquiryDetailScreen         | inquiry_detail_screen.dart    |
+  | 8   | AdminDashboardScreen        | admin_dashboard_screen.dart   |
+  | 9   | AdminTicketDetailScreen     | admin_ticket_detail_screen.dart|
+  +-----+-----------------------------+-------------------------------+
+
+5.2  NAVIGASI & ROLE-BASED ROUTING
+
+  SplashScreen (2 detik) -> cek token di SharedPreferences:
+    Token ADA   -> cek role user:
+                    admin -> /admin-dashboard
+                    user  -> /home
+    Token TIDAK -> /login
+
+  AdminDashboardScreen -> tap tiket -> AdminTicketDetailScreen
+  HomeScreen -> "Tiket Saya" -> InquiryListScreen
+             -> "Buat Tiket Baru" -> InquiryFormScreen
+
+5.3  API SERVICE (Singleton)
+
+  Kelas: ApiService (api_service.dart)
+    - Base URL: http://10.0.2.2:8000/api (Android emulator)
+    - Token management: SharedPreferences (getToken/setToken/clearToken)
+    - User storage: SharedPreferences (getStoredUser/setStoredUser)
+    - 401 handler global: _handleAuthError() -> clear token & user
+    - Headers: Accept + Content-Type JSON, Authorization Bearer
+
+  Endpoint yang diimplementasikan:
+    register(), login(), logout()
+    getCategories()
+    createInquiry(), getMyInquiries(), getInquiryDetail(), sendReply()
+    getAllInquiries(), getAdminInquiryDetail(), updateInquiryStatus()
+
+5.4  MODEL CLASSES
+
+    AuthResponse   : status, message, user, token, tokenType
+    ApiResponse<T> : Generic wrapper response
+    User           : id, name, email, role
+    Category       : id, name, slug
+    Inquiry        : id, userId, categoryId, nama, email, website,
+                     telp, pesan, status, category, user, replies
+    Reply          : id, inquiryId, userId, message, createdAt, user
+
+5.5  FITUR ADMIN DI FLUTTER
+
+  AdminDashboardScreen:
+    - Statistik: Total, Open, Proses, Closed
+    - Daftar semua tiket (kartu: kategori, status, website, pesan,
+      nama+email pemilik tiket)
+    - Filter status: Semua / Open / Proses / Closed
+    - Pull-to-refresh
+
+  AdminTicketDetailScreen:
+    - Detail tiket + info user pembuat + status saat ini
+    - Dropdown ubah status (Open, In Progress, Closed)
+    - Thread percakapan dengan timestamp (created_at)
+    - Form balasan dengan tombol kirim
+
+5.6  BUG FIXING & IMPROVEMENTS PADA FLUTTER
+
+  Bug #1: Tidak ada admin UI.
+    Masalah: API admin sudah ada di api_service.dart (getAllInquiries,
+    getAdminInquiryDetail, updateInquiryStatus) tetapi tidak ada
+    screen admin di Flutter. Admin dan user selalu ke HomeScreen
+    yang sama.
+    Perbaikan: Dibuat AdminDashboardScreen + AdminTicketDetailScreen.
+    SplashScreen + HomeScreen ditambah role-based routing.
+
+  Bug #2: Model Reply tidak memiliki field created_at.
+    Masalah: Timestamp balasan tidak bisa ditampilkan di UI.
+    Perbaikan: Ditambah field createdAt di model Reply, diparse dari
+    json['created_at'].
+
+  Bug #3: Daftar tiket tidak auto-refresh.
+    Masalah: inquiry_list_screen.dart hanya load sekali di initState.
+    Setelah buat tiket baru atau buka detail, daftar tidak update.
+    Perbaikan: Tambah RefreshIndicator + refresh setelah kembali
+    dari detail screen.
+
+  Bug #4: Debug print() di production code.
+    Masalah: api_service.dart mencetak token, request body, dan
+    response ke console (logcat), berpotensi kebocoran data.
+    Perbaikan: Semua statement print() dihapus.
+
+  Bug #5: Tidak ada 401 handler global.
+    Masalah: Saat token expired, API call gagal diam-diam (return
+    empty list/null) tanpa membersihkan token kadaluarsa.
+    Perbaikan: Ditambah _handleAuthError() di api_service.dart yang
+    memeriksa status code 401 dan otomatis clearToken() +
+    clearStoredUser().
+
+  Bug #6: Dead code (2 file duplikat, 812 baris total).
+    Masalah: example_implementations.dart (375 baris) mengandung
+    main() kedua dan contoh aplikasi terpisah. inquiry_form_page.dart
+    (437 baris) adalah duplikat form yang tidak terpakai.
+    Perbaikan: Kedua file dihapus.
+
+  Bug #7: Pesan error register kurang tepat.
+    Masalah: "Password tidak benar!" ditampilkan saat password dan
+    konfirmasi tidak cocok.
+    Perbaikan: Diubah menjadi "Password tidak cocok!".
+
+
+======================================================================
+                          BAB 6
+                    KESIMPULAN & SARAN
+======================================================================
+
+6.1  KESIMPULAN
+
+Sistem WebSpace Support telah berhasil dibangun sebagai aplikasi
+help desk ticketing system lengkap dengan:
+
+  1. Backend REST API (Laravel 11) — 11 endpoint yang mencakup
+     autentikasi JWT, manajemen tiket, balasan, dan admin panel.
+
+  2. Frontend Web (Blade + Tailwind) — 6 halaman responsif dengan
+     dashboard user dan admin, modal pembuatan tiket, status filter,
+     dan percakapan real-time via DOM append.
+
+  3. Aplikasi Mobile (Flutter) — 9 screen dengan navigasi role-based,
+     admin dashboard, manajemen status, dan UI yang konsisten dengan
+     web.
+
+  4. Semua bug yang ditemukan selama pengujian telah diperbaiki,
+     mencakup: validasi email, ordering script JS, reply flow,
+     role redirect, 401 handler, dan cleanup dead code.
+
+6.2  SARAN PENGEMBANGAN
+
+  1. Notifikasi — Tambahkan push notification (Firebase FCM) agar
+     user mendapat notifikasi saat admin membalas tiketnya.
+
+  2. Pagination — Daftar tiket di admin dashboard perlu pagination
+     untuk menangani data dalam jumlah besar.
+
+  3. File Attachment — Tambahkan fitur upload lampiran (screenshot)
+     pada tiket dan balasan.
+
+  4. Email Notification — Kirim email ke user saat status tiket
+     berubah atau ada balasan baru.
+
+  5. Unit Test — Tambahkan PHPUnit test untuk controller Laravel
+     dan widget test untuk Flutter.
+
+  6. CORS Configuration — Untuk production deployment, konfigurasi
+     CORS agar API bisa diakses dari domain frontend yang berbeda.
+
+  7. Rate Limiting — Terapkan rate limiting pada endpoint publik
+     (login, register) untuk mencegah brute force attack.
+
+
+======================================================================
+               DAFTAR FILE PROJECT (LARAVEL)
+======================================================================
+
+routes/
+  web.php          — 6 route Blade (login, register, dashboard, admin)
+  api.php          — 11 route REST API (auth, inquiries, admin)
+
+app/
+  Http/Controllers/
+    AuthController.php              — register, login, logout
+    InquiryController.php           — CRUD tiket + admin methods
+    InquiryReplyController.php      — store reply
+    CategoryController.php          — list categories
+  Http/Requests/
+    InquiryRequest.php              — validasi pembuatan tiket
+  Http/Middleware/
+    CheckRole.php                   — RBAC middleware (role check)
+  Models/
+    User.php            — JWT subject, inquiries(), isAdmin()
+    Inquiry.php         — fillable, belongsTo user+category, hasMany replies
+    InquiryReply.php    — fillable, belongsTo inquiry+user
+    Category.php        — fillable name+slug, hasMany inquiries
+
+database/
+  migrations/
+    0001_..._create_users_table.php
+    0001_..._add_role_to_users_table.php
+    0001_..._create_categories_table.php
+    0001_..._create_inquiries_table.php
+    0001_..._create_inquiry_replies_table.php
+  seeders/
+    DatabaseSeeder.php  — 2 user, 5 category, 3 inquiry, 6 reply
+
+resources/views/
+  layouts/
+    app.blade.php       — base HTML + Tailwind + storage helpers
+    dashboard.blade.php — sidebar + header + API functions
+  auth/
+    login.blade.php     — login form (split layout, akun demo)
+    register.blade.php  — register form
+  user/
+    index.blade.php     — dashboard: stats + tiket list + modal create
+    show.blade.php      — ticket detail + chat + reply form
+  admin/
+    index.blade.php     — all tickets + filter status
+    show.blade.php      — detail + status dropdown + chat + reply
+
+
+======================================================================
+               DAFTAR FILE PROJECT (FLUTTER)
+======================================================================
+
+lib/
+  main.dart                          — entry point + 7 named routes
+  models/
+    auth_response.dart               — AuthResponse, ApiResponse<T>
+    category.dart                    — Category (id, name, slug)
+    inquiry.dart                     — Inquiry + Reply models
+    user.dart                        — User (id, name, email, role)
+  services/
+    api_service.dart                 — Singleton, 13 API methods
+  screens/
+    splash_screen.dart               — splash + role redirect
+    login_screen.dart                — login form
+    register_screen.dart             — register form
+    home_screen.dart                 — user dashboard menu
+    inquiry_form_screen.dart         — create ticket form
+    inquiry_list_screen.dart         — user ticket list + refresh
+    inquiry_detail_screen.dart       — ticket detail + reply
+    admin_dashboard_screen.dart      — all tickets + filter (baru)
+    admin_ticket_detail_screen.dart  — detail + status + reply (baru)
+  widgets/
+    custom_widgets.dart              — reusable widgets
+
+
+======================================================================
+                  CATATAN PENGERJAAN
+======================================================================
+
+1. Server Laravel dijalankan dengan: php artisan serve
+2. Flutter dijalankan dengan: flutter run
+3. Base URL Flutter: http://10.0.2.2:8000/api (Android emulator)
+4. Akun demo:
+     Admin: admin@webspace.test / password
+     User : user@webspace.test  / password
+
+
+======================================================================
+                -- AKHIR LAPORAN --
+======================================================================
